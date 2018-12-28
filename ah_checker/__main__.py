@@ -85,8 +85,11 @@ def main():
         loop.call_later(CHECK_DELAY, comparePanelIds)
         
     async def comparePanelIds():
+        logger = logging.getLogger(__name__)
         new_panel_id = await getPanelID()
+        logger.info("Checking {}...".format(AH_URL))
         if new_panel_id != current_panel_id:
+            logger.info("New panel ID: {}".format(new_panel_id))
             # Post update announcement to the channel
             comic_update_role = utils.find(lambda x: x.name == "comic update", noisytenant_guild.roles)
             comic_update_message = "{} Awful Hospital updated!\n{}".format(comic_update_role.mention(), AH_URL)
