@@ -9,6 +9,7 @@ import os
 import configparser
 import re
 import xdg
+import contextlib
 from collections import OrderedDict
     
 def minutes_to_seconds(minutes):
@@ -74,17 +75,17 @@ def main():
     bot_token = config['DEFAULT']['bot_token']
     NOISYTENANTS_GUILDID = int(config['DEFAULT']['noisytenants_guildid'])
     NOISYTENANTS_CHANID = int(config['DEFAULT']['noisytenants_chanid'])
-    print(bot_token)
         
     current_panel_id = None
     async def fillInitialPanelId():
         current_panel_id = await getPanelID()
         logger = logging.getLogger(__name__)
         logger.info("Initial panel ID: {}".format(current_panel_id))
-        loop = asyncio.get_running_loop()
-        loop.call_later(CHECK_DELAY, comparePanelIds)
+        while True:
+            await asyncio.sleep(CHECK_DELAY)
+            current_panel_id = await comparePanelIds(current_panel_id)
         
-    async def comparePanelIds():
+    async def comparePanelIds(current_panel_id):
         logger = logging.getLogger(__name__)
         new_panel_id = await getPanelID()
         logger.info("Checking {}...".format(AH_URL))
@@ -94,13 +95,20 @@ def main():
             comic_update_role = utils.find(lambda x: x.name == "comic update", noisytenant_guild.roles)
             comic_update_message = "{} Awful Hospital updated!\n{}".format(comic_update_role.mention(), AH_URL)
             await cli.get_channel(NOISYTENANT_CHANID).send(comic_update_message)
-            current_panel_id = new_panel_id
-            
-        loop = asyncio.get_running_loop()
-        loop.call_later(CHECK_DELAY, comparePanelIds)
+            return new_panel_id
         
     loop = asyncio.get_event_loop()
     loop.create_task(fillInitialPanelId())
     
     cli = discord.Client(loop=loop)
-    cli.run(bot_token)
+    try:
+        loop.run_until_complete(cli.start(bot_token))
+    except KeyboardInterrupt:
+        loop.run_until_complete(cli.logout())
+        for task in asyncio.Task.all_tasks():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                loop.run_until_complete(task)
+        loop.run_until_complete(loop.shutdown_asyncgens())
+    finally:
+        loop.close()
