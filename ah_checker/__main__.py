@@ -53,7 +53,7 @@ def config_path():
 
 def main():
     logging.basicConfig(level=os.environ.get("LOGLEVEL", "WARNING"))
-    logging.getLogger(__name__).setLevel(logging.DEBUG)
+    logging.getLogger(__name__).setLevel(logging.INFO)
     logger = logging.getLogger(__name__)
     bot_token = "x"
     config = configparser.ConfigParser()
@@ -76,7 +76,6 @@ def main():
     NOISYTENANTS_GUILDID = int(config['DEFAULT']['noisytenants_guildid'])
     NOISYTENANTS_CHANID = int(config['DEFAULT']['noisytenants_chanid'])
         
-    current_panel_id = None
     async def fillInitialPanelId():
         current_panel_id = await getPanelID()
         logger = logging.getLogger(__name__)
@@ -90,12 +89,14 @@ def main():
         new_panel_id = await getPanelID()
         logger.info("Checking {}...".format(AH_URL))
         if new_panel_id != current_panel_id:
-            logger.info("New panel ID: {}".format(new_panel_id))
+            logger.info("New panel ID: {}->{}".format(current_panel_id, new_panel_id))
             # Post update announcement to the channel
+            noisytenant_guild = cli.get_guild(NOISYTENANTS_GUILDID)
             comic_update_role = utils.find(lambda x: x.name == "comic update", noisytenant_guild.roles)
-            comic_update_message = "{} Awful Hospital updated!\n{}".format(comic_update_role.mention(), AH_URL)
-            await cli.get_channel(NOISYTENANT_CHANID).send(comic_update_message)
-            return new_panel_id
+            comic_update_message = "{} Awful Hospital updated!\n{}".format(comic_update_role.mention, AH_URL)
+            logger.info("Would send message: '{}'".format(comic_update_message))
+            #await cli.get_channel(NOISYTENANT_CHANID).send(comic_update_message)
+        return new_panel_id
         
     loop = asyncio.get_event_loop()
     loop.create_task(fillInitialPanelId())
