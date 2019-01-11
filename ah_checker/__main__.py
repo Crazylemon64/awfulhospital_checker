@@ -93,9 +93,9 @@ def main():
             # Post update announcement to the channel
             noisytenant_guild = cli.get_guild(NOISYTENANTS_GUILDID)
             comic_update_role = utils.find(lambda x: x.name == "comic update", noisytenant_guild.roles)
-            comic_update_message = "{} Awful Hospital updated!\n{}".format(comic_update_role.mention, AH_URL)
+            comic_update_message = "{} Awful Hospital updated!\n{}".format(comic_update_role.mention, "http://www.bogleech.com/awfulhospital/{}.html".format(new_panel_id))
             logger.info("Would send message: '{}'".format(comic_update_message))
-            #await cli.get_channel(NOISYTENANT_CHANID).send(comic_update_message)
+            await cli.get_channel(NOISYTENANTS_CHANID).send(comic_update_message)
         return new_panel_id
         
     loop = asyncio.get_event_loop()
