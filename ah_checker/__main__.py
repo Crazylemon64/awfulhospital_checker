@@ -36,6 +36,15 @@ async def getPanelID():
         logger.debug("Meta's content: '{}'".format(soup.meta['content']))
         m = META_REGEX.search(soup.meta['content'])
         return int(m.group("comicID"))
+    
+async def countPanelDialogs(new_url):
+    async with aiohttp.ClientSession() as session:
+        logger = logging.getLogger(__name__)
+        html = await fetch(session, new_url)
+        soup = BeautifulSoup(html, 'html.parser')
+        dialog_count = len(soup.find_all(class_="dialog"))
+        logger.debug("Dialog count: '{}'".format(dialog_count))
+        return dialog_count
 
 def config_path():
     if 'APPDATA' in os.environ:
@@ -50,6 +59,9 @@ def config_path():
             if e.errno != errno.EEXIST:
                 raise
     return APP_CONFIG_PATH
+
+def panelIDToURL(panel_id):
+    return "http://www.bogleech.com/awfulhospital/{}.html".format(panel_id)
 
 def main():
     logging.basicConfig(level=os.environ.get("LOGLEVEL", "WARNING"))
@@ -76,30 +88,40 @@ def main():
     NOISYTENANTS_GUILDID = int(config['DEFAULT']['noisytenants_guildid'])
     NOISYTENANTS_CHANID = int(config['DEFAULT']['noisytenants_chanid'])
         
-    async def fillInitialPanelId():
+    async def fillInitialPanelInfo():
         current_panel_id = await getPanelID()
+        current_dialog_count = await countPanelDialogs(panelIDToURL(current_panel_id))
         logger = logging.getLogger(__name__)
         logger.info("Initial panel ID: {}".format(current_panel_id))
+        logger.info("Initial dialog count: {}".format(current_dialog_count))
         while True:
             await asyncio.sleep(CHECK_DELAY)
-            current_panel_id = await comparePanelIds(current_panel_id)
+            current_panel_id, current_dialog_count = await comparePanelIds(current_panel_id, current_dialog_count)
+            
+    async def announceNewPanel(new_url):
+        # Post update announcement to the channel
+        noisytenant_guild = cli.get_guild(NOISYTENANTS_GUILDID)
+        comic_update_role = utils.find(lambda x: x.name == "comic update", noisytenant_guild.roles)
+        comic_update_message = "{} Awful Hospital updated!\n{}".format(comic_update_role.mention, new_url)
+        logger.info("Would send message: '{}'".format(comic_update_message))
+        await cli.get_channel(NOISYTENANTS_CHANID).send(comic_update_message)
         
-    async def comparePanelIds(current_panel_id):
+    async def comparePanelIds(current_panel_id, current_dialog_count):
         logger = logging.getLogger(__name__)
-        new_panel_id = await getPanelID()
         logger.info("Checking {}...".format(AH_URL))
+        new_panel_id = await getPanelID()
+        new_dialog_count = await countPanelDialogs(panelIDToURL(new_panel_id))
         if new_panel_id != current_panel_id:
             logger.info("New panel ID: {}->{}".format(current_panel_id, new_panel_id))
-            # Post update announcement to the channel
-            noisytenant_guild = cli.get_guild(NOISYTENANTS_GUILDID)
-            comic_update_role = utils.find(lambda x: x.name == "comic update", noisytenant_guild.roles)
-            comic_update_message = "{} Awful Hospital updated!\n{}".format(comic_update_role.mention, "http://www.bogleech.com/awfulhospital/{}.html".format(new_panel_id))
-            logger.info("Would send message: '{}'".format(comic_update_message))
-            await cli.get_channel(NOISYTENANTS_CHANID).send(comic_update_message)
-        return new_panel_id
+            logger.info("New panel dialog count: {}".format(new_dialog_count))
+            await announceNewPanel(panelIDToURL(new_panel_id))
+        elif new_dialog_count != current_dialog_count:
+            logger.info("New dialog count: {}->{}".format(current_dialog_count, new_dialog_count))
+            await announceNewPanel(panelIDToURL(curren_panel_id))
+        return new_panel_id, new_dialog_count
         
     loop = asyncio.get_event_loop()
-    loop.create_task(fillInitialPanelId())
+    loop.create_task(fillInitialPanelInfo())
     
     cli = discord.Client(loop=loop)
     try:
