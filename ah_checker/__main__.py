@@ -10,6 +10,7 @@ import configparser
 import re
 import xdg
 import contextlib
+import argparse
 from collections import OrderedDict
     
 def minutes_to_seconds(minutes):
@@ -64,7 +65,9 @@ def panelIDToURL(panel_id):
     return "http://www.bogleech.com/awfulhospital/{}.html".format(panel_id)
 
 def main():
-    logging.basicConfig(level=os.environ.get("LOGLEVEL", "WARNING"))
+    logging.basicConfig(
+            level=os.environ.get("LOGLEVEL", "WARNING"),
+            format='%(asctime)s|%(levelname)s|%(message)s|')
     logging.getLogger(__name__).setLevel(logging.INFO)
     logger = logging.getLogger(__name__)
     bot_token = "x"
@@ -94,9 +97,14 @@ def main():
         logger = logging.getLogger(__name__)
         logger.info("Initial panel ID: {}".format(current_panel_id))
         logger.info("Initial dialog count: {}".format(current_dialog_count))
+        if args.startup_ping:
+            await announceNewPanel(panelIDToURL(current_panel_id))
         while True:
             await asyncio.sleep(CHECK_DELAY)
-            current_panel_id, current_dialog_count = await comparePanelIds(current_panel_id, current_dialog_count)
+            try:
+                current_panel_id, current_dialog_count = await comparePanelIds(current_panel_id, current_dialog_count)
+            except Exception as e:
+                print(e)
             
     async def announceNewPanel(new_url):
         # Post update announcement to the channel
@@ -117,8 +125,12 @@ def main():
             await announceNewPanel(panelIDToURL(new_panel_id))
         elif new_dialog_count != current_dialog_count:
             logger.info("New dialog count: {}->{}".format(current_dialog_count, new_dialog_count))
-            await announceNewPanel(panelIDToURL(curren_panel_id))
+            await announceNewPanel(panelIDToURL(current_panel_id))
         return new_panel_id, new_dialog_count
+    
+    parser = argparse.ArgumentParser(description='Notify the noisy tenants discord about updates to the webcomic "Awful Hospital"')
+    parser.add_argument('-p', dest='startup_ping', action='store_true', help='ping the discord on startup (useful for missed updates)')
+    args = parser.parse_args()
         
     loop = asyncio.get_event_loop()
     loop.create_task(fillInitialPanelInfo())
