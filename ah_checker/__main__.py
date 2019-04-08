@@ -33,10 +33,10 @@ async def getPanelID():
     async with aiohttp.ClientSession() as session:
         logger = logging.getLogger(__name__)
         html = await fetch(session, AH_URL)
-        soup = BeautifulSoup(html, 'html.parser')
-        logger.debug("Meta's content: '{}'".format(soup.meta['content']))
-        m = META_REGEX.search(soup.meta['content'])
-        return int(m.group("comicID"))
+    soup = BeautifulSoup(html, 'html.parser')
+    logger.debug("Meta's content: '{}'".format(soup.meta['content']))
+    m = META_REGEX.search(soup.meta['content'])
+    return int(m.group("comicID"))
     
 async def countPanelDialogs(new_url):
     async with aiohttp.ClientSession() as session:
@@ -58,7 +58,7 @@ def config_path():
             os.makedirs(APP_CONFIG_PATH)
         except OSError as e:
             if e.errno != errno.EEXIST:
-                raise
+                raise e
     return APP_CONFIG_PATH
 
 def panelIDToURL(panel_id):
@@ -104,7 +104,7 @@ def main():
             try:
                 current_panel_id, current_dialog_count = await comparePanelIds(current_panel_id, current_dialog_count)
             except Exception as e:
-                print(e)
+                logger.exception(e, exc_info=True)
             
     async def announceNewPanel(new_url):
         # Post update announcement to the channel
