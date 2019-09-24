@@ -128,7 +128,7 @@ def main():
         logger.info("Checking {}...".format(AH_URL))
         new_panel_id = await getPanelID()
         new_dialog_count = await countPanelDialogs(panelIDToURL(new_panel_id))
-        if new_panel_id != current_panel_id
+        if new_panel_id != current_panel_id:
             if new_panel_id not in panel_history:   
                 logger.info("New panel ID: {}->{}".format(current_panel_id, new_panel_id))
                 logger.info("New panel dialog count: {}".format(new_dialog_count))
