@@ -6,15 +6,21 @@ import aiohttp
 import async_timeout
 import logging
 import os
+import sys
 import configparser
 import re
 import xdg
 import contextlib
 import argparse
-from collections import OrderedDict
+from collections import OrderedDict, deque
+
+from .command_shell import ChipShell
     
 def minutes_to_seconds(minutes):
     return minutes * 60
+
+# How many panel IDs to remember at a time to avoid announcing the same thing repeatedly
+PANEL_HISTORY = 5
 
 APP_DIRNAME = 'ah_checker'
 AH_URL = "http://www.bogleech.com/awfulhospital/index.html"
@@ -22,7 +28,7 @@ CHECK_DELAY = minutes_to_seconds(15)
 NOISYTENANTS_GUILDID = 0
 NOISYTENANTS_CHANNELID = 0
 
-META_REGEX = re.compile(r'0; url=http://www.bogleech.com/awfulhospital/(?P<comicID>\d+).html')
+META_REGEX = re.compile(r'0; url=https?://www.bogleech.com/awfulhospital/(?P<comicID>\d+).html')
 
 async def fetch(session, url):
     with async_timeout.timeout(10):
@@ -34,8 +40,9 @@ async def getPanelID():
         logger = logging.getLogger(__name__)
         html = await fetch(session, AH_URL)
     soup = BeautifulSoup(html, 'html.parser')
-    logger.debug("Meta's content: '{}'".format(soup.meta['content']))
-    m = META_REGEX.search(soup.meta['content'])
+    assert soup.html.head.meta
+    logger.debug("Meta's content: '{}'".format(soup.html.head.meta['content']))
+    m = META_REGEX.search(soup.html.head.meta['content'])
     return int(m.group("comicID"))
     
 async def countPanelDialogs(new_url):
@@ -68,7 +75,7 @@ def main():
     logging.basicConfig(
             level=os.environ.get("LOGLEVEL", "WARNING"),
             format='%(asctime)s|%(levelname)s|%(message)s|')
-    logging.getLogger(__name__).setLevel(logging.INFO)
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
     logger = logging.getLogger(__name__)
     bot_token = "x"
     config = configparser.ConfigParser()
@@ -97,12 +104,14 @@ def main():
         logger = logging.getLogger(__name__)
         logger.info("Initial panel ID: {}".format(current_panel_id))
         logger.info("Initial dialog count: {}".format(current_dialog_count))
+        panel_history = deque([], PANEL_HISTORY)
         if args.startup_ping:
             await announceNewPanel(panelIDToURL(current_panel_id))
+        # This is the primary loop of the program
         while True:
             await asyncio.sleep(CHECK_DELAY)
             try:
-                current_panel_id, current_dialog_count = await comparePanelIds(current_panel_id, current_dialog_count)
+                current_panel_id, current_dialog_count = await comparePanelIds(current_panel_id, current_dialog_count, panel_history)
             except Exception as e:
                 logger.exception(e, exc_info=True)
             
@@ -114,15 +123,20 @@ def main():
         logger.info("Would send message: '{}'".format(comic_update_message))
         await cli.get_channel(NOISYTENANTS_CHANID).send(comic_update_message)
         
-    async def comparePanelIds(current_panel_id, current_dialog_count):
+    async def comparePanelIds(current_panel_id, current_dialog_count, panel_history: deque):
         logger = logging.getLogger(__name__)
         logger.info("Checking {}...".format(AH_URL))
         new_panel_id = await getPanelID()
         new_dialog_count = await countPanelDialogs(panelIDToURL(new_panel_id))
-        if new_panel_id != current_panel_id:
-            logger.info("New panel ID: {}->{}".format(current_panel_id, new_panel_id))
-            logger.info("New panel dialog count: {}".format(new_dialog_count))
-            await announceNewPanel(panelIDToURL(new_panel_id))
+        if new_panel_id != current_panel_id
+            if new_panel_id not in panel_history:   
+                logger.info("New panel ID: {}->{}".format(current_panel_id, new_panel_id))
+                logger.info("New panel dialog count: {}".format(new_dialog_count))
+                panel_history.extend(new_panel_id)
+                await announceNewPanel(panelIDToURL(new_panel_id))
+            else:
+                logger.info("Repeated panel ID, not announcing: {}".format(new_panel_id))
+                logger.info("Panel history: {}".format(panel_history))
         elif new_dialog_count != current_dialog_count:
             logger.info("New dialog count: {}->{}".format(current_dialog_count, new_dialog_count))
             await announceNewPanel(panelIDToURL(current_panel_id))
@@ -135,7 +149,14 @@ def main():
     loop = asyncio.get_event_loop()
     loop.create_task(fillInitialPanelInfo())
     
+    if sys.platform == "win32":
+        shellmode = "Run"
+    else:
+        shellmode = "Reader"
+    
     cli = discord.Client(loop=loop)
+    chipshell = ChipShell(mode=shellmode, client=cli, target_channel=NOISYTENANTS_CHANID, prompt="$> ")
+    chipshell.start(loop)
     try:
         loop.run_until_complete(cli.start(bot_token))
     except KeyboardInterrupt:

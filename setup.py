@@ -14,6 +14,7 @@ REQUIRED = [
         "bs4",
         "aiohttp",
         "async_timeout",
+        "asynccmd",
         ]
 #REQUIRED = [
         # Using this branch bc older ones don't work with 3.7
